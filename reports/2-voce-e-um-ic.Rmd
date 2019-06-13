@@ -39,14 +39,12 @@ lastfm = lastfm %>%
 glimpse(lastfm)
 ```
 
-## Proporção de artistas novos e popularidade
-
 
 Utilizaremos ICs para estimar duas métricas sobre os usuários do LastFM em geral durante um período de 6 meses. Em ambos os casos faremos isso a partir de uma amostra de 300 usuários. As duas métricas são: 
 
-### 1. Qual a proporção de novos artistas em geral escutada por usuários?
+## 1. Qual a proporção de novos artistas em geral escutada por usuários?
 
-## Proporção de artistas novos e popularidade
+#### Proporção de artistas novos e popularidade
 
 ```{r}
 
@@ -60,7 +58,7 @@ lastfm <- lastfm %>%
 ```{r}
 theta_c = mean(lastfm$prop_news)
 
-repetitions = 2000
+repetitions = 5000
 
 um_bootstrap <- function(x){
   prop_news = x %>% pull(prop_news)
@@ -72,7 +70,7 @@ um_bootstrap <- function(x){
 }
 ```
 
-## A Reamostragem
+#### A Reamostragem
 ```{r}
 
 reamostragens = tibble(i = 1:repetitions) %>% 
@@ -104,8 +102,8 @@ intervalo = reamostragens %>%
 intervalo %>%
   ggplot(aes(x = theta_c_s)) +
   geom_histogram(binwidth = .001,
-                 colour = "darkred",
-                 fill = "#FF6666")
+                 colour = "darkgreen",
+                 fill = "#33CC33")
 
 ```
 
@@ -132,7 +130,8 @@ ci_boot = tidy(booted,
 ```
 
 ```{r}
-p1 = intervalo %>%
+
+intervalo %>%
     ggplot(aes(
         x = "",
         y = statistic,
@@ -144,7 +143,8 @@ p1 = intervalo %>%
     labs(x = "Código", 
          y = "Proporção de novos artistas") + 
     ylim(.235, .265)
-p2 = ci_boot %>%
+
+ci_boot %>%
     ggplot(aes(
         x = "",
         y = statistic,
@@ -157,9 +157,88 @@ p2 = ci_boot %>%
          y = "Proporção de novos artistas") + 
     ylim(.235, .265)
 
-grid.arrange(p1, p2, ncol = 2)
 ```
 
-2. Para os usuários que gostam de música muito pop (mediana_pop > 5), qual a correlação entre a popularidade mediana dos artistas escutado e a proporção dos artistas escutados que eram novos. 
+Manualmente, conseguimos chegar em um valor de *0.242366* para theta. Com o boot, varifica-se um theta de *0.242366* com o  seguinte CI: *[0.2311325, 0.254517]*.
 
-Crie intervalos com 95% de confiança.
+## 2. Para os usuários que gostam de música muito pop (mediana_pop > 5), qual a correlação entre a popularidade mediana dos artistas escutado e a proporção dos artistas escutados que eram novos. 
+
+```{r}
+
+lastfm <-  lastfm %>% 
+  filter(mediana_pop > 5)
+
+theta_cor <- cor(lastfm$mediana_pop, lastfm$prop_news, method = "pearson")
+
+bootstrap_cor <- function(x) {
+  boot_x <- sample(x,             
+                   size = NROW(x),
+                   replace = TRUE)
+  
+  return( cor(boot_x$mediana_pop, boot_x$prop_news, method = "pearson") )
+}
+
+```
+
+
+### A Reamostragem
+```{r}
+
+reamostragens_cor = tibble(i = 1:repetitions) %>% 
+  mutate(theta_cor_s = map_dbl(i, ~ bootstrap_cor(lastfm)))
+
+ci_amostragens_cor = reamostragens_cor %>% 
+  mutate(conf.low = theta_cor + quantile((theta_cor_s - theta_cor), .05), 
+         conf.high = theta_cor + quantile((theta_cor_s - theta_cor), .95), 
+         statistic = theta_cor) 
+
+```
+
+```{r}
+
+funcao_theta_cor_boot = function(df, i) {
+  df <- df %>% slice(i) 
+  cor(df$mediana_pop, df$prop_news, method = "pearson")
+}
+
+booted_cor <- boot(data = lastfm, 
+               statistic = funcao_theta_cor_boot, 
+               R = 5000)
+
+ci_boot_cor = tidy(booted_cor, 
+          conf.level = .95,
+          conf.method = "bca",
+          conf.int = TRUE) %>% 
+    select(conf.low, statistic, conf.high)
+
+```
+
+```{r}
+
+ci_amostragens_cor %>%
+    ggplot(aes(
+        x = "",
+        y = statistic,
+        ymin = conf.low,
+        ymax = conf.high
+    )) +
+    geom_pointrange() +
+    geom_point(size = 3) + 
+    labs(x = "Código", 
+         y = "Correlação")
+
+ci_boot_cor %>%
+    ggplot(aes(
+        x = "",
+        y = statistic,
+        ymin = conf.low,
+        ymax = conf.high
+    )) +
+    geom_pointrange() +
+    geom_point(size = 3) + 
+    labs(x = "Bootstrap", 
+         y = "")
+
+```
+
+Os dois métodos mostraram resultados semelhantes. Podemos concluir que existe uma relação entre a proporção de artistas novos e a popularidade dos artisitas.
